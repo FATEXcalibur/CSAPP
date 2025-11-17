@@ -149,7 +149,8 @@ int bitXor(int x, int y) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  /* return 2; */
+    return 1 << 31;
 }
 //2
 /*
@@ -160,7 +161,18 @@ int tmin(void) {
  *   Rating: 2
  */
 int isTmax(int x) {
-  return 2;
+  /* return 2; */
+    /* return x == 0x7fffffff; */
+    /* x = ~x; // if x = max, ~x = 0x80000000 */
+    /* return !(x ^ (~x + 1)) & !!x; // 保证非0 */
+    // 1
+    /* int y = x + 1; */
+    /* return !(~(x ^ y)) & !!y; */
+
+    // 2
+    int y = ~x;
+    int z = x + 1;
+    return !(y ^ z) & !!y;
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -170,8 +182,9 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  /* return (0xAAAAAAAA & x) == 0xAAAAAAAA; */
-    return 2;
+    int mask = (0xAA << 8) | 0xAA;
+    mask = (mask << 16) | mask;
+    return !((mask & x) ^ mask);
 }
 /* 
  * negate - return -x 
@@ -181,7 +194,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+    return ~x + 1;
 }
 //3
 /* 
@@ -194,7 +207,9 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  /* return 2; */
+    int y = x & 0x0F;
+    return !((x >> 4) ^ 0x3) & !((0x9 + (~y + 1)) >> 31);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -204,7 +219,10 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  /* return 2; */
+    int flags = !!x;
+    int mask = ~flags + 1;
+    return (mask & y) | (~mask & z);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -214,7 +232,8 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+    return !((y + (~x + 1)) >> 31);
+
 }
 //4
 /* 
@@ -226,12 +245,13 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  /* return 2; */
+    return ((x | (~x + 1)) >> 31) + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
- *  Examples: howManyBits(12) = 5
- *            howManyBits(298) = 10
+ *  examples: howmanybits(12) = 5
+ *            howmanybits(298) = 10
  *            howManyBits(-5) = 4
  *            howManyBits(0)  = 1
  *            howManyBits(-1) = 1
@@ -241,7 +261,29 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+    int sign = x >> 31;
+    int b16, b8, b4, b2, b1, b0;
+
+    x = x ^ sign;
+
+    b16 = !!(x >> 16) << 4;
+    x >>= b16;
+
+    b8 = !!(x >> 8) << 3;
+    x >>= b8;
+
+    b4 = !!(x >> 4) << 2;
+    x >>= b4;
+
+    b2 = !!(x >> 2) << 1;
+    x >>= b2;
+
+    b1 = !!(x >> 1);
+    x >>= b1;
+
+    b0 = x;
+
+    return b16 + b8 + b4 + b2 + b1 + b0 + 1;
 }
 //float
 /* 
