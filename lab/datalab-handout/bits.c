@@ -140,7 +140,7 @@ NOTES:
  *   Rating: 1
  */
 int bitXor(int x, int y) {
-    return ~(~x & ~y) & ~(x & y);
+    return ~(x & y) & ~(~x & ~y);
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -161,19 +161,13 @@ int tmin(void) {
  *   Rating: 2
  */
 int isTmax(int x) {
-  /* return 2; */
-    /* return x == 0x7fffffff; */
-    /* x = ~x; // if x = max, ~x = 0x80000000 */
-    /* return !(x ^ (~x + 1)) & !!x; // 保证非0 */
-    // 1
-    /* int y = x + 1; */
-    /* return !(~(x ^ y)) & !!y; */
-
-    // 2
-    int y = ~x;
-    int z = x + 1;
-    return !(y ^ z) & !!y;
+    // 0x7fffffff
+    // x + 1 == Tmin?
+    int val = x + 1;
+    int val_r = ~val + 1;
+    return !(val ^ val_r) & !!val;
 }
+
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
  *   Examples allOddBits(0xFFFFFFFD) = 0, allOddBits(0xAAAAAAAA) = 1
@@ -182,9 +176,11 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-    int mask = (0xAA << 8) | 0xAA;
+    // create 0xAAAAAAAA
+    int mask = 0xAA;
+    mask = (mask << 8) | mask;
     mask = (mask << 16) | mask;
-    return !((mask & x) ^ mask);
+    return !((x & mask) ^ mask);
 }
 /* 
  * negate - return -x 
@@ -208,8 +204,9 @@ int negate(int x) {
  */
 int isAsciiDigit(int x) {
   /* return 2; */
-    int y = x & 0x0F;
-    return !((x >> 4) ^ 0x3) & !((0x9 + (~y + 1)) >> 31);
+    int part_front = x >> 4;
+    int part_end = x & 0xf;
+    return !(part_front ^ 0x3) & !(0x9 + (~part_end + 1) >> 31);
 }
 /* 
  * conditional - same as x ? y : z 
@@ -233,7 +230,6 @@ int conditional(int x, int y, int z) {
  */
 int isLessOrEqual(int x, int y) {
     return !((y + (~x + 1)) >> 31);
-
 }
 //4
 /* 
@@ -246,7 +242,8 @@ int isLessOrEqual(int x, int y) {
  */
 int logicalNeg(int x) {
   /* return 2; */
-    return ((x | (~x + 1)) >> 31) + 1;
+    // how to get 1 or 0? 0 + 1 or 0xffffffff + 1?
+    return ((x | (~x+1)) >> 31) + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -261,29 +258,32 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-    int sign = x >> 31;
-    int b16, b8, b4, b2, b1, b0;
+    // x and ~x exist together
+    int sign = x >> 31; // 0 or 0xffffffff;
+    int val = x ^ sign;
 
-    x = x ^ sign;
+    // !!(val >> 16) << 4; if high 16 bits have none zero bit
+    int bit16, bit8, bit4, bit2, bit1, bit0;
 
-    b16 = !!(x >> 16) << 4;
-    x >>= b16;
+    bit16 = !!(val >> 16) << 4;
+    val >>= bit16;
 
-    b8 = !!(x >> 8) << 3;
-    x >>= b8;
+    bit8 = !!(val >> 8) << 3;
+    val >>= bit8;
 
-    b4 = !!(x >> 4) << 2;
-    x >>= b4;
+    bit4 = !!(val >> 4) << 2;
+    val >>= bit4;
 
-    b2 = !!(x >> 2) << 1;
-    x >>= b2;
+    bit2 = !!(val >> 2) << 1;
+    val >>= bit2;
 
-    b1 = !!(x >> 1);
-    x >>= b1;
+    bit1 = !!(val >> 1);
+    val >>= bit1;
 
-    b0 = x;
+    bit0 = val;
 
-    return b16 + b8 + b4 + b2 + b1 + b0 + 1;
+    return bit16 + bit8 + bit4 + bit2 + bit1 + bit0 + 1;
+
 }
 //float
 /* 
@@ -298,7 +298,32 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+    unsigned sign = uf & 0x80000000u;
+    unsigned exp = uf & 0x7f800000u;
+    unsigned frac = uf & 0x007fffffu;
+
+    // 1. NaN 
+    if (exp == 0x7f800000u){
+        return uf;
+    }
+
+    // 2. zero and Denormaled
+    if (exp == 0){
+        frac <<= 1;
+        if (frac >> 23) {
+            exp += (1 << 23);
+            frac &= ((1 << 23) - 1);
+        }
+        
+        return sign | exp | frac;
+    }
+
+    // 3. normal
+    exp += (1 << 23);
+    if (exp == 0x7f800000u){
+        return sign | exp;
+    }
+    return sign | exp | frac;
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
@@ -310,7 +335,48 @@ unsigned float_twice(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  return 2;
+    unsigned sign = x & 0x80000000;
+    unsigned val, sz, tmp, e, frac_part, frac, frac_raw, reminder, half;
+    int shift;
+
+    val = sign ? -x : x;
+
+    if (x == 0){
+        return 0;
+    }
+
+    sz = 0;
+    tmp = val;
+    while (tmp >>= 1){
+        sz++;
+    }
+
+    e = sz + 127;
+
+    frac_part = val ^ (1u << sz);
+
+    if (sz <= 23){
+        frac = frac_part << (23 - sz);
+    } else {
+        shift = sz - 23;
+        frac_raw = frac_part >> shift;
+        reminder = frac_part & ((1u << shift) - 1);
+
+        half = 1u << (shift - 1);
+        if (reminder > half || 
+            (reminder == half && (frac_raw & 1))){
+            frac_raw++;
+
+            if (frac_raw >> 23){
+                frac_raw &= 0x7fffff;
+                e += 1;
+            }
+        }
+    
+        frac = frac_raw;
+    }
+
+    return sign | (e << 23) | frac;
 }
 /* 
  * float_f2i - Return bit-level equivalent of expression (int) f
@@ -325,5 +391,44 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 int float_f2i(unsigned uf) {
-  return 2;
+    unsigned sign = uf & 0x80000000u;
+    unsigned exp  = uf & 0x7f800000u;
+    unsigned frac = uf & 0x007fffffu;
+    int E;
+    int ret;
+
+    // 1. NaN and infinity
+    if (exp == 0x7f800000u){
+        return 0x80000000u;
+    }
+
+    // 2. Denormal
+    if (exp == 0){
+        return 0;
+    }
+
+    // 3. normal
+    E = (exp >> 23) - 127;
+
+    if (E < 0){
+        return 0;
+    }
+
+    frac += (1 << 23);
+
+    if (E < 23) {
+        frac >>= (23 - E);
+    } else if (E < 31){
+        frac <<= (E - 23);
+    } else {
+        return 0x80000000;
+    }
+
+    if (sign){
+        ret = ~frac + 1;
+    } else{
+        ret = frac;
+    }
+
+    return ret;
 }
